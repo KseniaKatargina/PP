@@ -18,6 +18,11 @@ int main(int argc, char** argv) {
     int a = 5;
     int b = 6;
 
+    int elements_per_process = n / size;
+    int local_x[2];
+    int local_y[2];
+    int local_z[2];
+
     if (rank == 0) {
         for (int i = 0; i < n; i++) {
             x[i] = 1 + i;
@@ -40,22 +45,35 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
 
         for (int i = 1; i < size; i++) {
-            MPI_Send(x, n, MPI_INT, i, 0, MPI_COMM_WORLD);
-            MPI_Send(y, n, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(x + i * elements_per_process, elements_per_process, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(y + i * elements_per_process, elements_per_process, MPI_INT, i, 0, MPI_COMM_WORLD);
+        }
+
+        // Оставшиеся данные для процесса 0
+        for (int i = 0; i < elements_per_process; i++) {
+            local_x[i] = x[i];
+            local_y[i] = y[i];
         }
     }
     else {
-        MPI_Recv(x, n, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(y, n, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        // Принимаем данные
+        MPI_Recv(local_x, elements_per_process, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(local_y, elements_per_process, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
-    for (int i = 0; i < n; i++) {
-        z[i] = a * x[i] + b * y[i];
+    // Вычисления на локальных данных
+    for (int i = 0; i < elements_per_process; i++) {
+        local_z[i] = a * local_x[i] + b * local_y[i];
     }
 
     if (rank == 0) {
         for (int i = 1; i < size; i++) {
-            MPI_Recv(z, n, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(z + i * elements_per_process, elements_per_process, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+
+        // Оставшиеся данные для процесса 0
+        for (int i = 0; i < elements_per_process; i++) {
+            z[i] = a * local_x[i] + b * local_y[i];
         }
 
         std::cout << "Result on process 0:" << std::endl;
@@ -65,13 +83,15 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     else {
-        MPI_Send(z, n, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        // Отправляем результат на процесс 0
+        MPI_Send(local_z, elements_per_process, MPI_INT, 0, 0, MPI_COMM_WORLD);
     }
 
     MPI_Finalize();
 
     return 0;
 }
+
 
 
 
