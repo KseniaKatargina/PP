@@ -1,23 +1,27 @@
 ﻿#include <iostream>
 #include <mpi.h>
 
-const int N = 10;
-
 int main(int argc, char** argv) {
-    int rank, size;
 
+    int rank, size;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Status status;
+    int count;
 
-    int matrix1[N][N];
-    int matrix2[N][N];
-    int localResult[N][N];
+    srand(time(nullptr));
+    const int N = 10;
+    const int elements_per_process = 2;
 
     if (rank == 0) {
-        for (int i = 0; i < N; ++i) {
-            for (int j = 0; j < N; ++j) {
-                matrix1[i][j] = i * 2 + j;
+        int matrix1[N][N];
+        int matrix2[N][N];
+        int result[N][N];
+
+        for (int i = 0; i < N; i++) {
+            for (int j = 0; j < N; j++) {
+                matrix1[i][j] = i * 5 + j;
                 matrix2[i][j] = i * 6 + j;
             }
         }
@@ -38,35 +42,15 @@ int main(int argc, char** argv) {
             std::cout << std::endl;
         }
 
-        for (int i = 1; i < size; ++i) {
-            MPI_Send(&matrix1[0][0], N * N, MPI_INT, i, 0, MPI_COMM_WORLD);
-            MPI_Send(&matrix2[0][0], N * N, MPI_INT, i, 0, MPI_COMM_WORLD);
+        int n = 1;
+        for (int i = 0; i < N; i += 2, n++) {
+            MPI_Send(&matrix1[i][0], elements_per_process * N, MPI_INT, n, 10, MPI_COMM_WORLD);
+            MPI_Send(&matrix2[i][0], elements_per_process * N, MPI_INT, n, 10, MPI_COMM_WORLD);
         }
-    }
-    else {
-        MPI_Recv(&matrix1[0][0], N * N, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&matrix2[0][0], N * N, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
 
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < N; ++j) {
-            localResult[i][j] = matrix1[i][j] * matrix2[i][j];
-        }
-    }
-
-    if (rank == 0) {
-        int result[N][N];
-
-        for (int i = 1; i < size; ++i) {
-            MPI_Recv(&result[0][0], N * N, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            for (int j = 0; j < N; ++j) {
-                for (int k = 0; k < N; ++k) {
-                    if (result[j][k] == 0) {
-                        result[j][k] = localResult[j][k];
-                    }
-                }
-            }
+        n = 1;
+        for (int i = 0; i < N; i += 2, n++) {
+            MPI_Recv(&result[i][0], elements_per_process * N, MPI_INT, n, 10, MPI_COMM_WORLD, &status);
         }
 
         std::cout << "Resulting matrix:\n";
@@ -78,12 +62,24 @@ int main(int argc, char** argv) {
         }
     }
     else {
-        MPI_Send(&localResult[0][0], N * N, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        MPI_Probe(0, 10, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status, MPI_INT, &count);
+        int local_matrix1[elements_per_process][N];
+        int local_matrix2[elements_per_process][N];
+        int local_result[elements_per_process][N];
+
+        MPI_Recv(&local_matrix1[0][0], count, MPI_INT, 0, 10, MPI_COMM_WORLD, &status);
+        MPI_Recv(&local_matrix2[0][0], count, MPI_INT, 0, 10, MPI_COMM_WORLD, &status);
+
+        for (int i = 0; i < elements_per_process; i++) {
+            for (int j = 0; j < N; j++) {
+                local_result[i][j] = local_matrix1[i][j] * local_matrix2[i][j];
+            }
+        }
+        MPI_Send(&local_result, count, MPI_INT, 0, 10, MPI_COMM_WORLD);
     }
 
     MPI_Finalize();
 
     return 0;
 }
-
-
